@@ -1,0 +1,1488 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Generador Dodecafónico</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/tone@14.7.58/build/Tone.js"></script>
+    <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6;
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+        }
+        .note-display {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+        .note-item {
+            background-color: #ffffff;
+            padding: 0.5rem 0.75rem;
+            border-radius: 9999px;
+            border: 1px solid #e5e7eb;
+            box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+            font-size: 1.125rem;
+            color: #4b5563;
+            transition: background-color 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+            min-width: 2.5rem;
+            text-align: center;
+        }
+        .note-highlight {
+            background-color: #60a5fa;
+            color: white;
+            box-shadow: 0 0 10px #60a5fa;
+        }
+        .card {
+            background-color: #ffffff;
+            padding: 2rem;
+            border-radius: 1rem;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            border: 1px solid #e5e7eb;
+        }
+        .series-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .play-button, .stop-button {
+            padding: 0.5rem;
+            border-radius: 9999px;
+            background-color: #60a5fa;
+            color: white;
+            transition: all 0.2s ease-in-out;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .play-button:hover, .stop-button:hover {
+            background-color: #3b82f6;
+            transform: scale(1.1);
+        }
+        .stop-button {
+            background-color: #ef4444;
+            margin-left: 0.5rem;
+            display: none; /* Initially hidden */
+        }
+        .stop-button:hover {
+            background-color: #dc2626;
+        }
+        .action-buttons {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+        .action-button, .transpose-button {
+            font-weight: 700;
+            padding: 0.75rem 1.5rem;
+            border-radius: 9999px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            transition: transform 0.2s;
+        }
+        .action-button:hover, .transpose-button:hover {
+            transform: scale(1.05);
+        }
+        .generate-button {
+            background-color: #2563eb;
+            color: white;
+        }
+        .save-button {
+            background-color: #4b5563;
+            color: white;
+        }
+        .toggle-button {
+            background-color: #4b5563;
+            color: white;
+        }
+        
+        /* Modifications for segmentation design */
+        .grouped-series-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1rem;
+        }
+        
+        .group-card {
+            background-color: #f9fafb;
+            padding: 1rem;
+            border-radius: 0.5rem;
+            box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+            border: 1px solid #e5e7eb;
+            width: 100%;
+        }
+
+        .grouped-notes-grid {
+            display: grid;
+            gap: 0.5rem;
+        }
+
+        /* Define grid columns for segmentation */
+        .grid-cols-2 { grid-template-columns: repeat(2, 1fr); }
+        .grid-cols-3 { grid-template-columns: repeat(3, 1fr); }
+        .grid-cols-4 { grid-template-columns: repeat(4, 1fr); }
+        .grid-cols-6 { grid-template-columns: repeat(6, 1fr); }
+
+        .group-column {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            justify-content: center;
+            transition: background-color 0.2s ease-in-out;
+            padding: 0.5rem;
+            border-radius: 0.5rem;
+        }
+        
+        /* Class to highlight the group during playback */
+        .group-highlight {
+            background-color: #e0e7ff; /* Tailwind indigo-100 */
+        }
+        
+        .matrix-container {
+            overflow-x: auto;
+            width: 100%;
+        }
+        #matrixTable {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.75rem;
+        }
+        #matrixTable th, #matrixTable td {
+            text-align: center;
+            padding: 0.25rem;
+            border: 1px solid #e5e7eb;
+            white-space: nowrap;
+            cursor: pointer;
+            transition: background-color 0.2s, color 0.2s;
+        }
+        #matrixTable thead th, #matrixTable tbody th, #matrixTable tfoot th {
+            background-color: #e5e7eb;
+            font-weight: 700;
+        }
+        .matrix-cell-highlight {
+            background-color: #a5b4fc;
+            color: white;
+            font-weight: bold;
+        }
+        .matrix-header-highlight {
+            background-color: #818cf8;
+            color: white;
+        }
+        .matrix-hover-highlight-row,
+        .matrix-hover-highlight-col {
+            background-color: #e0e7ff;
+        }
+
+        /* New classes for persistent selection based on the user's image */
+        .matrix-selected-row,
+        .matrix-selected-col {
+            background-color: #c7d2fe !important; /* Lighter blue for the selected row/column */
+        }
+        .matrix-cell-selected {
+            background-color: #4f46e5 !important; /* Darker blue for the central cell */
+            color: white !important;
+            font-weight: bold;
+        }
+
+        .transpose-buttons-container {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            margin-top: 1rem;
+        }
+        .transpose-button {
+            padding: 0.5rem 1rem;
+            font-size: 0.875rem;
+            background-color: #6b7280;
+            color: white;
+            border-radius: 9999px;
+        }
+        .transpose-button.active {
+            background-color: #2563eb;
+            transform: scale(1.1);
+        }
+        .custom-series-input-container {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 0.5rem;
+        }
+        .custom-series-input {
+            width: 50px;
+            height: 50px;
+            text-align: center;
+            border-radius: 0.5rem;
+            border: 1px solid #d1d5db;
+        }
+        .text-error {
+            color: #ef4444;
+            font-size: 0.875rem;
+            margin-top: 0.5rem;
+        }
+        .save-load-container {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 1rem;
+        }
+        .save-load-input {
+            padding: 0.5rem 1rem;
+            border-radius: 9999px;
+            border: 1px solid #d1d5db;
+        }
+        .saved-series-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.5rem;
+            border-bottom: 1px solid #e5e7eb;
+        }
+        .saved-series-item:last-child {
+            border-bottom: none;
+        }
+        .saved-series-item span {
+            font-weight: 500;
+            cursor: pointer;
+        }
+        .saved-series-item button {
+            background-color: #ef4444;
+            color: white;
+            border-radius: 9999px;
+            padding: 0.25rem 0.5rem;
+            font-size: 0.75rem;
+        }
+        .saved-series-item button:hover {
+            background-color: #dc2626;
+        }
+        .group-card-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 0.5rem;
+        }
+
+        /* Responsive layout for medium screens and up */
+        @media (min-width: 768px) {
+            .md\:flex-col {
+                flex-direction: column;
+            }
+        }
+        
+        /* New styles for matrix headers with labels */
+        .matrix-header-label {
+            font-size: 0.875rem;
+            font-weight: bold;
+            color: #4b5563;
+            line-height: 1;
+        }
+    </style>
+</head>
+<body class="flex flex-col min-h-screen">
+    <div class="flex-grow p-4 md:p-8 overflow-y-auto">
+        <div id="appCard" class="max-w-7xl w-full mx-auto">
+            <h1 class="text-4xl md:text-5xl font-extrabold text-center text-gray-900 mb-6 tracking-tight">
+                Generador Dodecafónico
+            </h1>
+
+            <!-- Action buttons container -->
+            <div class="action-buttons mb-8">
+                <button id="generateRandomButton" class="action-button generate-button">
+                    Generar Nueva Serie Aleatoria
+                </button>
+                <button id="saveButton" class="action-button save-button">
+                    Guardar como Imagen
+                </button>
+                <button id="toggleNotationButton" class="action-button toggle-button">
+                    Cambiar a Notación Numérica
+                </button>
+            </div>
+            <p id="notationHelpText" class="text-center text-gray-500 mb-6 text-sm">
+                Notas: C=0, C#=1, D=2, D#=3, E=4, F=5, F#=6, G=7, G#=8, A=9, A#=10, B=11.
+            </p>
+            
+            <!-- Main Content Grid -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
+                
+                <!-- Columna Izquierda -->
+                <div class="space-y-8">
+                    <!-- Custom Series Input -->
+                    <div class="card">
+                        <h3 class="text-xl font-semibold text-gray-800 mb-4">Introduce tu propia Serie Dodecafónica</h3>
+                        <p class="text-sm text-gray-500 mb-4">Ingresa 12 notas de 0 a 11, sin repetir.</p>
+                        <div class="custom-series-input-container mb-4">
+                            <!-- Input fields will be generated by JS -->
+                        </div>
+                        <div class="flex justify-center gap-4">
+                            <button id="generateCustomButton" class="action-button bg-green-500 text-white">Generar</button>
+                            <button id="clearCustomButton" class="action-button bg-gray-400 text-white">Limpiar</button>
+                        </div>
+                        <p id="customInputError" class="text-center text-error mt-4 hidden">Entrada inválida. Asegúrate de que las 12 notas sean números únicos de 0 a 11.</p>
+                    </div>
+
+                    <!-- Display section for the four basic series -->
+                    <div class="card">
+                         <div class="bg-gray-100 p-4 rounded-lg shadow-inner mb-4">
+                            <div class="series-header mb-2">
+                                <h3 class="text-xl font-semibold text-gray-800">1. Prime (P)</h3>
+                                <div class="flex gap-2">
+                                    <button class="play-button" data-series-type="prime" data-series-id="primeSeries">
+                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5">
+                                            <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.077-6.13a1.5 1.5 0 000-2.538L6.3 2.84z" />
+                                        </svg>
+                                    </button>
+                                    <button class="stop-button" data-series-type="prime">
+                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5">
+                                            <path fill-rule="evenodd" d="M2.5 5A2.5 2.5 0 015 2.5h10A2.5 2.5 0 0117.5 5v10a2.5 2.5 0 01-2.5 2.5H5A2.5 2.5 0 012.5 15V5z" clip-rule="evenodd" />
+                                        </svg>
+                                    </button>
+                                </div>
+                            </div>
+                            <p class="text-sm text-gray-500 mb-4">Esta es la serie original, una secuencia única de los 12 tonos cromáticos. Sirve como base para todas las demás formas.</p>
+                            <ul id="primeSeries" class="note-display"></ul>
+                        </div>
+                        <div class="bg-gray-100 p-4 rounded-lg shadow-inner mb-4">
+                            <div class="series-header mb-2">
+                                <h3 class="text-xl font-semibold text-gray-800">2. Inversión (I)</h3>
+                                <div class="flex gap-2">
+                                    <button class="play-button" data-series-type="inversion" data-series-id="inversionSeries">
+                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5">
+                                            <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.077-6.13a1.5 1.5 0 000-2.538L6.3 2.84z" />
+                                        </svg>
+                                    </button>
+                                    <button class="stop-button" data-series-type="inversion">
+                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5">
+                                            <path fill-rule="evenodd" d="M2.5 5A2.5 2.5 0 015 2.5h10A2.5 2.5 0 0117.5 5v10a2.5 2.5 0 01-2.5 2.5H5A2.5 2.5 0 012.5 15V5z" clip-rule="evenodd" />
+                                        </svg>
+                                    </button>
+                                </div>
+                            </div>
+                            <p class="text-sm text-gray-500 mb-4">Se invierten los intervalos de la serie original. Si un intervalo sube, la inversión lo hace bajar en la misma cantidad de semitonos, y viceversa.</p>
+                            <ul id="inversionSeries" class="note-display"></ul>
+                        </div>
+                        <div class="bg-gray-100 p-4 rounded-lg shadow-inner mb-4">
+                            <div class="series-header mb-2">
+                                <h3 class="text-xl font-semibold text-gray-800">3. Retrógrada (R)</h3>
+                                <div class="flex gap-2">
+                                    <button class="play-button" data-series-type="retrograde" data-series-id="retrogradeSeries">
+                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5">
+                                            <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.077-6.13a1.5 1.5 0 000-2.538L6.3 2.84z" />
+                                        </svg>
+                                    </button>
+                                    <button class="stop-button" data-series-type="retrograde">
+                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5">
+                                            <path fill-rule="evenodd" d="M2.5 5A2.5 2.5 0 015 2.5h10A2.5 2.5 0 0117.5 5v10a2.5 2.5 0 01-2.5 2.5H5A2.5 2.5 0 012.5 15V5z" clip-rule="evenodd" />
+                                        </svg>
+                                    </button>
+                                </div>
+                            </div>
+                            <p class="text-sm text-gray-500 mb-4">Es la serie original leída al revés, comenzando por la última nota y terminando con la primera.</p>
+                            <ul id="retrogradeSeries" class="note-display"></ul>
+                        </div>
+                        <div class="bg-gray-100 p-4 rounded-lg shadow-inner">
+                            <div class="series-header mb-2">
+                                <h3 class="text-xl font-semibold text-gray-800">4. Inversión Retrógrada (IR)</h3>
+                                <div class="flex gap-2">
+                                    <button class="play-button" data-series-type="inversionRetrograde" data-series-id="inversionRetrogradeSeries">
+                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5">
+                                            <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.077-6.13a1.5 1.5 0 000-2.538L6.3 2.84z" />
+                                        </svg>
+                                    </button>
+                                    <button class="stop-button" data-series-type="inversionRetrograde">
+                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5">
+                                            <path fill-rule="evenodd" d="M2.5 5A2.5 2.5 0 015 2.5h10A2.5 2.5 0 0117.5 5v10a2.5 2.5 0 01-2.5 2.5H5A2.5 2.5 0 012.5 15V5z" clip-rule="evenodd" />
+                                        </svg>
+                                    </button>
+                                </div>
+                            </div>
+                            <p class="text-sm text-gray-500 mb-4">Es la inversión de la serie, pero leída al revés.</p>
+                            <ul id="inversionRetrogradeSeries" class="note-display"></ul>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Columna Derecha -->
+                <div class="space-y-8">
+                    <!-- Playback Controls -->
+                    <div class="card flex flex-col sm:flex-row items-center justify-center gap-4 flex-wrap">
+                        <p class="text-gray-700">Instrumento: Piano</p>
+                        <div class="flex items-center gap-2">
+                            <label for="volumeSlider" class="text-gray-700">Volumen:</label>
+                            <input type="range" id="volumeSlider" min="-30" max="0" value="-10" class="w-24">
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <label for="tempoSlider" class="text-gray-700">Tempo:</label>
+                            <input type="range" id="tempoSlider" min="60" max="240" value="120" class="w-24">
+                            <span id="tempoValue" class="text-gray-500 text-sm">120 bpm</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <label for="rhythmSelect" class="text-gray-700">Ritmo:</label>
+                            <select id="rhythmSelect" class="rounded-full px-3 py-1 bg-white border border-gray-300 shadow-sm">
+                                <option value="8n">Corchea (8n)</option>
+                                <option value="4n">Negra (4n)</option>
+                                <option value="16n">Semicorchea (16n)</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Save and Load Series Section -->
+                    <div class="card">
+                        <h3 class="text-xl font-semibold text-gray-800 mb-4">Guardar y Cargar Serie Principal</h3>
+                        <div class="save-load-container mb-4">
+                            <input type="text" id="seriesNameInput" placeholder="Nombre de la serie" class="save-load-input">
+                            <button id="saveSeriesButton" class="action-button bg-green-600 text-white">Guardar Serie</button>
+                        </div>
+                        <div id="savedSeriesContainer">
+                            <ul id="savedSeriesList" class="divide-y divide-gray-200">
+                                <!-- Saved series will be loaded here by JS -->
+                            </ul>
+                        </div>
+                    </div>
+
+                    <!-- Transposition Section -->
+                    <div class="card">
+                        <h3 class="text-xl font-semibold text-gray-800 mb-2">Transponer Serie</h3>
+                        <p class="text-sm text-gray-500 mb-4">
+                            Selecciona una nota para transponer la serie principal a una nueva nota de inicio (P-0 a P-11).
+                        </p>
+                        <div id="transposeButtonsContainer" class="transpose-buttons-container">
+                            <!-- Transpose buttons will be generated by JS -->
+                        </div>
+                    </div>
+
+                    <!-- Section for grouping the series -->
+                    <div class="card">
+                        <div class="series-header mb-4">
+                            <h3 class="text-xl font-semibold text-gray-800">Segmentación de la Serie Principal</h3>
+                            <select id="groupSelect" class="rounded-full px-3 py-1 bg-white border border-gray-300 shadow-sm">
+                                <option value="2">Grupos de 2</option>
+                                <option value="3">Grupos de 3</option>
+                                <option value="4">Grupos de 4</option>
+                                <option value="6">Grupos de 6</option>
+                            </select>
+                        </div>
+                        <!-- CSS Grid container for a better horizontal layout that wraps on small screens -->
+                        <div id="groupedSeriesContainer" class="grouped-series-container"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Matrix section, spanning the entire width -->
+            <div class="card mb-8">
+                <div class="series-header mb-4">
+                    <h3 class="text-xl font-semibold text-gray-800">Matriz Dodecafónica</h3>
+                </div>
+                <p class="text-sm text-gray-500 mb-4">
+                    Esta tabla de 12x12 contiene las 48 formas posibles de la serie dodecafónica. Haz clic en cualquier celda o encabezado para ver las cuatro formas relacionadas (P, I, R, IR) en el panel de abajo.
+                    <br><br>
+                    Para leer la matriz:
+                    <ul>
+                        <li><b>P (Prime):</b> Lee las filas de izquierda a derecha. Los encabezados P están en el lado izquierdo de la matriz.</li>
+                        <li><b>I (Inversión):</b> Lee las columnas de arriba abajo. Los encabezados I están en la parte superior de la matriz.</li>
+                        <li><b>R (Retrógrada):</b> Lee las filas de derecha a izquierda. Los encabezados R están en el lado derecho de la matriz.</li>
+                        <li><b>Inversión Retrógrada (IR):</b> Lee las columnas de abajo a arriba. Los encabezados IR están en la parte inferior de la matriz.</li>
+                    </ul>
+                </p>
+                <div class="matrix-container">
+                    <table id="matrixTable"></table>
+                </div>
+            </div>
+
+            <!-- New section for showing the four series from a matrix click -->
+            <div id="matrix-series-display" class="card mb-8 hidden">
+                <h3 class="text-xl font-semibold text-gray-800 mb-4">Formas de la Serie Relacionadas</h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div class="bg-gray-100 p-4 rounded-lg shadow-inner">
+                        <div class="flex items-center justify-between mb-2">
+                             <h4 class="font-bold text-lg">Prime (<span id="matrixPrimeHeader"></span>)</h4>
+                            <button class="play-button" data-series-id="matrixPrimeSeries" data-series-type="matrixPrimeSeries">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5">
+                                    <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.077-6.13a1.5 1.5 0 000-2.538L6.3 2.84z" />
+                                </svg>
+                            </button>
+                        </div>
+                        <ul id="matrixPrimeSeries" class="note-display"></ul>
+                    </div>
+                    <div class="bg-gray-100 p-4 rounded-lg shadow-inner">
+                        <div class="flex items-center justify-between mb-2">
+                            <h4 class="font-bold text-lg">Inversión (<span id="matrixInversionHeader"></span>)</h4>
+                            <button class="play-button" data-series-id="matrixInversionSeries" data-series-type="matrixInversionSeries">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5">
+                                    <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.077-6.13a1.5 1.5 0 000-2.538L6.3 2.84z" />
+                                </svg>
+                            </button>
+                        </div>
+                        <ul id="matrixInversionSeries" class="note-display"></ul>
+                    </div>
+                    <div class="bg-gray-100 p-4 rounded-lg shadow-inner">
+                        <div class="flex items-center justify-between mb-2">
+                            <h4 class="font-bold text-lg">Retrógrada (<span id="matrixRetrogradeHeader"></span>)</h4>
+                            <button class="play-button" data-series-id="matrixRetrogradeSeries" data-series-type="matrixRetrogradeSeries">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5">
+                                    <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.077-6.13a1.5 1.5 0 000-2.538L6.3 2.84z" />
+                                </svg>
+                            </button>
+                        </div>
+                        <ul id="matrixRetrogradeSeries" class="note-display"></ul>
+                    </div>
+                    <div class="bg-gray-100 p-4 rounded-lg shadow-inner">
+                        <div class="flex items-center justify-between mb-2">
+                            <h4 class="font-bold text-lg">Inversión Retrógrada (<span id="matrixInversionRetrogradeHeader"></span>)</h4>
+                            <button class="play-button" data-series-id="matrixInversionRetrogradeSeries" data-series-type="matrixInversionRetrogradeSeries">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5">
+                                    <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.077-6.13a1.5 1.5 0 000-2.538L6.3 2.84z" />
+                                </svg>
+                            </button>
+                        </div>
+                        <ul id="matrixInversionRetrogradeSeries" class="note-display"></ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <footer class="p-4 bg-gray-200 text-center text-gray-600 text-sm">
+        <p>&copy; 2025 Generador Dodecafónico. Todos los derechos reservados. Realizado por Juan Miguel Ríos Redondo</p>
+    </footer>
+
+    <script>
+        // Global state variables for the app.
+        let currentSeriesData = null; 
+        let basePrimeSeries = null; 
+        let savedSeries = {};
+        const noteNames = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+        let useNoteNames = true;
+        let player = null; // Tone.js player instance
+        let currentTransposeIndex = 0;
+        let isPlaying = false; // Simple flag to track playback state
+        
+        // Tone.js setup
+        // The instrument has been changed to a PolySynth with a Tone.Synth for a better piano sound.
+        const pianoSynth = new Tone.PolySynth(Tone.Synth, {
+            oscillator: {
+                type: "triangle"
+            },
+            envelope: {
+                attack: 0.02,
+                decay: 0.5,
+                sustain: 0.1,
+                release: 1.2
+            }
+        }).toDestination();
+        Tone.Transport.bpm.value = 120;
+        
+        // --- Helper Functions ---
+        
+        /**
+         * Converts a numerical note (0-11) to its corresponding note name (C, C#, etc.).
+         * @param {number} note - The numerical note.
+         * @returns {string} The note name.
+         */
+        function getNoteName(note) {
+            return noteNames[note];
+        }
+
+        /**
+         * Converts a numerical note to a frequency string for Tone.js.
+         * @param {number} note - The numerical note.
+         * @returns {string} The frequency string (e.g., "C3").
+         */
+        function getNoteFrequency(note) {
+            return Tone.Frequency(note + 48, "midi").toNote();
+        }
+
+        /**
+         * Generates a random dodecaphonic series.
+         * This function ensures a valid series (12 unique, random notes) is always returned.
+         * @returns {number[]} The random series.
+         */
+        function generateRandomSeries() {
+            const series = Array.from({ length: 12 }, (_, i) => i);
+            // Fisher-Yates shuffle algorithm
+            for (let i = series.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [series[i], series[j]] = [series[j], series[i]];
+            }
+            return series;
+        }
+
+        /**
+         * Generates the inversion of a given prime series.
+         * @param {number[]} primeSeries - The prime series.
+         * @returns {number[]} The inverted series.
+         */
+        function generateInversion(primeSeries) {
+            const inversion = [];
+            if (!primeSeries || primeSeries.length === 0) return inversion;
+            const firstNote = primeSeries[0];
+            for (let i = 0; i < 12; i++) {
+                const interval = (primeSeries[i] - firstNote + 12) % 12;
+                inversion.push((firstNote - interval + 12) % 12);
+            }
+            return inversion;
+        }
+
+        /**
+         * Generates the retrograde of a given series.
+         * @param {number[]} series - The series to make retrograde.
+         * @returns {number[]} The retrograde series.
+         */
+        function generateRetrograde(series) {
+            if (!series) return [];
+            return [...series].reverse();
+        }
+
+        /**
+         * Generates the retrograde inversion of a given prime series.
+         * @param {number[]} primeSeries - The prime series.
+         * @returns {number[]} The retrograde inversion series.
+         */
+        function generateInversionRetrograde(primeSeries) {
+            return generateRetrograde(generateInversion(primeSeries));
+        }
+
+        /**
+         * Renders a series into a specific list element.
+         * @param {string} elementId - The ID of the <ul> element.
+         * @param {number[]} series - The series to render.
+         */
+        function renderSeries(elementId, series) {
+            const ul = document.getElementById(elementId);
+            if (!ul) {
+                console.error(`Element with ID ${elementId} not found.`);
+                return;
+            }
+            ul.innerHTML = '';
+            series.forEach(note => {
+                const li = document.createElement('li');
+                li.className = 'note-item';
+                li.textContent = useNoteNames ? getNoteName(note) : note;
+                ul.appendChild(li);
+            });
+        }
+
+        /**
+         * Generates the four forms (P, I, R, IR) for a given prime series,
+         * applies transposition, and renders them.
+         * @param {number[]} primeSeries - The base prime series (P-0).
+         * @param {number} transposeIndex - The transposition index.
+         */
+        function generateAndRenderSeries(primeSeries, transposeIndex = 0) {
+            if (!primeSeries || primeSeries.length !== 12) {
+                console.error('Invalid prime series provided for generateAndRenderSeries.');
+                return;
+            }
+            console.log('Generating and rendering series...');
+
+            basePrimeSeries = primeSeries;
+            currentTransposeIndex = transposeIndex;
+
+            const transposedPrime = primeSeries.map(note => (note + transposeIndex) % 12);
+            const invertedSeries = generateInversion(transposedPrime);
+            const retrogradeSeries = generateRetrograde(transposedPrime);
+            const inversionRetrogradeSeries = generateInversionRetrograde(transposedPrime);
+
+            currentSeriesData = {
+                prime: transposedPrime,
+                inversion: invertedSeries,
+                retrograde: retrogradeSeries,
+                inversionRetrograde: inversionRetrogradeSeries
+            };
+            
+            renderSeries('primeSeries', currentSeriesData.prime);
+            renderSeries('inversionSeries', currentSeriesData.inversion);
+            renderSeries('retrogradeSeries', currentSeriesData.retrograde);
+            renderSeries('inversionRetrogradeSeries', currentSeriesData.inversionRetrograde);
+            
+            renderDodecaphonicMatrix(basePrimeSeries);
+            const groupSelect = document.getElementById('groupSelect');
+            if (groupSelect) {
+                renderGroupedSeries(parseInt(groupSelect.value));
+            }
+        }
+
+        /**
+         * Creates and renders the custom input fields for a user-defined series.
+         */
+        function renderCustomInputFields() {
+            const container = document.querySelector('.custom-series-input-container');
+            if (!container) return;
+            container.innerHTML = '';
+            for (let i = 0; i < 12; i++) {
+                const input = document.createElement('input');
+                input.type = 'number';
+                input.min = 0;
+                input.max = 11;
+                input.className = 'custom-series-input';
+                input.id = `custom-input-${i}`;
+                input.placeholder = i + 1;
+                container.appendChild(input);
+            }
+        }
+
+        /**
+         * Generates and renders the transposition buttons (P-0 to P-11).
+         */
+        function renderTransposeButtons() {
+            const container = document.getElementById('transposeButtonsContainer');
+            if (!container) return;
+            container.innerHTML = '';
+            for (let i = 0; i < 12; i++) {
+                const button = document.createElement('button');
+                button.className = 'transpose-button';
+                button.dataset.transposeIndex = i;
+                button.textContent = `P-${i}`;
+                if (i === currentTransposeIndex) {
+                    button.classList.add('active');
+                }
+                container.appendChild(button);
+            }
+        }
+        
+        /**
+         * Renders the dodecaphonic matrix based on the prime series.
+         * @param {number[]} primeSeries - The base prime series (P-0).
+         */
+        function renderDodecaphonicMatrix(primeSeries) {
+            const table = document.getElementById('matrixTable');
+            if (!table) return;
+            table.innerHTML = '';
+            
+            if (!primeSeries || primeSeries.length !== 12) {
+                console.error("Invalid prime series for rendering the matrix.");
+                return;
+            }
+
+            const inversion = generateInversion(primeSeries);
+
+            // Create the header row (I labels)
+            const thead = table.createTHead();
+            let headerRow = thead.insertRow();
+            headerRow.insertCell().innerHTML = '<div class="matrix-header-label">P</div>'; // Corner cell
+            for (let i = 0; i < 12; i++) {
+                let th = document.createElement('th');
+                th.innerHTML = `<div class="matrix-header-label">I${i}</div>`;
+                th.className = 'matrix-header-col';
+                th.dataset.colIndex = i;
+                th.dataset.form = 'inversion';
+                headerRow.appendChild(th);
+            }
+            headerRow.insertCell().innerHTML = '<div class="matrix-header-label">R</div>'; // Right header corner
+
+            // Create the body rows
+            const tbody = table.createTBody();
+            for (let i = 0; i < 12; i++) {
+                const tr = tbody.insertRow();
+                let thLeft = document.createElement('th');
+                thLeft.innerHTML = `<div class="matrix-header-label">P${i}</div>`;
+                thLeft.className = 'matrix-header-row';
+                thLeft.dataset.rowIndex = i;
+                thLeft.dataset.form = 'prime';
+                tr.appendChild(thLeft);
+
+                // Populate the row with notes
+                const pNoteTranspose = (inversion[i] - primeSeries[0] + 12) % 12;
+                
+                for (let j = 0; j < 12; j++) {
+                    const value = (primeSeries[j] + pNoteTranspose) % 12;
+                    let td = tr.insertCell();
+                    td.textContent = useNoteNames ? getNoteName(value) : value;
+                    td.dataset.rowIndex = i;
+                    td.dataset.colIndex = j;
+                }
+                
+                let thRight = document.createElement('th');
+                thRight.innerHTML = `<div class="matrix-header-label">R${i}</div>`;
+                thRight.className = 'matrix-header-row';
+                thRight.dataset.rowIndex = i;
+                thRight.dataset.form = 'retrograde';
+                tr.appendChild(thRight);
+            }
+
+            // Create the footer row (IR labels)
+            const tfoot = table.createTFoot();
+            let footerRow = tfoot.insertRow();
+            footerRow.insertCell().innerHTML = '<div class="matrix-header-label">IR</div>';
+            for (let i = 0; i < 12; i++) {
+                let th = document.createElement('th');
+                th.innerHTML = `<div class="matrix-header-label">IR${i}</div>`;
+                th.className = 'matrix-header-col';
+                th.dataset.colIndex = i;
+                th.dataset.form = 'inversionRetrograde';
+                footerRow.appendChild(th);
+            }
+            footerRow.insertCell().textContent = '';
+        }
+        
+        /**
+         * Renders the grouped series visualization based on the user's selection.
+         * @param {number} groupSize - The number of notes per group.
+         */
+        function renderGroupedSeries(groupSize) {
+            const container = document.getElementById('groupedSeriesContainer');
+            if (!container) return;
+            container.innerHTML = '';
+            
+            if (!currentSeriesData || !currentSeriesData.prime || currentSeriesData.prime.length !== 12) return;
+            
+            const pSeries = currentSeriesData.prime;
+            const iSeries = currentSeriesData.inversion;
+            const rSeries = currentSeriesData.retrograde;
+            const irSeries = currentSeriesData.inversionRetrograde;
+
+            // An array of series data with unique identifiers for correct element selection
+            const seriesGroups = [
+                { title: 'Prime (P)', series: pSeries, id: 'grouped-prime', type: 'prime' },
+                { title: 'Inversión (I)', series: iSeries, id: 'grouped-inversion', type: 'inversion' },
+                { title: 'Retrógrada (R)', series: rSeries, id: 'grouped-retrograde', type: 'retrograde' },
+                { title: 'Inversión Retrógrada (IR)', series: irSeries, id: 'grouped-inversion-retrograde', type: 'inversionRetrograde' }
+            ];
+
+            seriesGroups.forEach(groupInfo => {
+                const card = document.createElement('div');
+                card.className = 'group-card';
+                
+                const header = document.createElement('div');
+                header.className = 'group-card-header';
+                const h4 = document.createElement('h4');
+                h4.className = 'font-bold text-base text-gray-800';
+                h4.textContent = groupInfo.title;
+                header.appendChild(h4);
+
+                const playButton = document.createElement('button');
+                playButton.className = 'play-button play-group-button';
+                playButton.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4"><path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.077-6.13a1.5 1.5 0 000-2.538L6.3 2.84z" /></svg>`;
+                // Agregamos data-series-id para que el selector de eventos sea más robusto
+                playButton.dataset.seriesId = groupInfo.id;
+                playButton.dataset.seriesType = groupInfo.type;
+                playButton.dataset.groupSize = groupSize;
+                header.appendChild(playButton);
+                
+                card.appendChild(header);
+
+                const groupsContainer = document.createElement('div');
+                groupsContainer.className = `grouped-notes-grid grid-cols-${12/groupSize}`;
+                groupsContainer.id = groupInfo.id;
+                
+                for (let i = 0; i < groupInfo.series.length; i += groupSize) {
+                    const group = groupInfo.series.slice(i, i + groupSize);
+                    const groupColumn = document.createElement('div');
+                    groupColumn.className = 'group-column';
+                    groupColumn.dataset.groupIndex = i / groupSize;
+                    
+                    group.forEach(note => {
+                        const li = document.createElement('li');
+                        li.className = 'note-item';
+                        li.textContent = useNoteNames ? getNoteName(note) : note;
+                        groupColumn.appendChild(li);
+                    });
+                    groupsContainer.appendChild(groupColumn);
+                }
+                
+                card.appendChild(groupsContainer);
+                container.appendChild(card);
+            });
+        }
+        
+        // --- Playback Functions ---
+        
+        /**
+         * Stops all Tone.js playback and cleans up.
+         * IMPORTANT: This function no longer clears the permanent matrix selection highlight.
+         */
+        function stopPlaying() {
+            if (!isPlaying) {
+                return; // Already stopped
+            }
+            console.log('Stopping playback.');
+
+            try {
+                if (Tone.Transport.state === 'started') {
+                    Tone.Transport.stop();
+                    Tone.Transport.cancel();
+                }
+            } catch (e) {
+                console.error("Error stopping Tone.js:", e);
+            }
+
+            isPlaying = false;
+            updatePlaybackButtons();
+            
+            // Clear all note highlights from the UI
+            document.querySelectorAll('.note-highlight').forEach(el => el.classList.remove('note-highlight'));
+            // Clear all grouped series highlights
+            document.querySelectorAll('.group-highlight').forEach(el => el.classList.remove('group-highlight'));
+            // Clear all temporary matrix hover highlights
+            document.querySelectorAll('.matrix-hover-highlight-row').forEach(el => el.classList.remove('matrix-hover-highlight-row'));
+            document.querySelectorAll('.matrix-hover-highlight-col').forEach(el => el.classList.remove('matrix-hover-highlight-col'));
+
+            console.log('Playback stopped and UI reset.');
+        }
+
+        /**
+         * Plays a series of notes sequentially using Tone.js.
+         * @param {number[]} series - The series to play.
+         * @param {string} elementId - The ID of the <ul> element containing the notes to highlight.
+         */
+        async function playSeries(series, elementId) {
+            stopPlaying(); // Stop any existing playback
+            isPlaying = true;
+            updatePlaybackButtons();
+
+            if (!series || series.length !== 12) {
+                console.error('Invalid series provided for playback.');
+                stopPlaying();
+                return;
+            }
+
+            try {
+                // Ensure audio context is started before playing.
+                await Tone.start();
+                const noteElements = document.getElementById(elementId).children;
+                const noteFrequencies = series.map(note => getNoteFrequency(note));
+                const rhythm = document.getElementById('rhythmSelect').value;
+
+                const sequence = new Tone.Sequence((time, noteIndex) => {
+                    pianoSynth.triggerAttackRelease(noteFrequencies[noteIndex], "8n", time);
+                    
+                    // Highlight notes
+                    const currentNoteElement = noteElements[noteIndex];
+                    if (currentNoteElement) {
+                        currentNoteElement.classList.add('note-highlight');
+                        Tone.Draw.schedule(() => {
+                             currentNoteElement.classList.remove('note-highlight');
+                        }, time + Tone.Time(rhythm).toSeconds());
+                    }
+                }, noteFrequencies.map((_, i) => i), rhythm); // Sequence based on note indices
+                
+                sequence.start(0);
+                Tone.Transport.start();
+                console.log('Series playback started.');
+                
+                // Stop playback after the sequence is done
+                Tone.Transport.scheduleOnce(() => {
+                    stopPlaying();
+                }, `+${Tone.Time(rhythm).toSeconds() * series.length}`);
+
+            } catch (error) {
+                console.error("Error during sequential series playback:", error);
+                stopPlaying();
+            }
+        }
+        
+        /**
+         * Plays a grouped series as simultaneous chords with highlights and pauses.
+         * @param {number[]} series - The series to play.
+         * @param {number} groupSize - The size of the groups.
+         * @param {string} seriesType - The type of series being played (e.g., 'prime').
+         * @param {string} containerId - The ID of the container with the grouped notes.
+         */
+        async function playGroupedSeries(series, groupSize, containerId) {
+            stopPlaying(); // Stop any existing playback
+            isPlaying = true;
+            updatePlaybackButtons();
+            
+            if (!series || series.length !== 12) {
+                console.error('Invalid series provided for grouped playback.');
+                stopPlaying();
+                return;
+            }
+            
+            try {
+                // Ensure audio context is started before playing.
+                await Tone.start();
+                
+                const groupColumns = document.querySelectorAll(`#${containerId} .group-column`);
+                if (groupColumns.length === 0) {
+                    console.error(`Grouped container with id "${containerId}" not found.`);
+                    stopPlaying();
+                    return;
+                }
+
+                const rhythm = document.getElementById('rhythmSelect').value;
+                const interval = Tone.Time(rhythm).toSeconds() * 1.5;
+                
+                let currentGroupIndex = 0;
+                
+                const groupLoop = new Tone.Loop(time => {
+                    if (currentGroupIndex >= groupColumns.length) {
+                        stopPlaying();
+                        return;
+                    }
+                    
+                    // Highlight current group and remove highlight from previous
+                    if (currentGroupIndex > 0) {
+                        groupColumns[currentGroupIndex - 1]?.classList.remove('group-highlight');
+                    }
+                    groupColumns[currentGroupIndex]?.classList.add('group-highlight');
+
+                    const group = series.slice(currentGroupIndex * groupSize, (currentGroupIndex + 1) * groupSize);
+                    const chordFrequencies = group.map(note => getNoteFrequency(note));
+                    pianoSynth.triggerAttackRelease(chordFrequencies, rhythm, time);
+                    
+                    currentGroupIndex++;
+                }, interval);
+                
+                groupLoop.start(0);
+                Tone.Transport.start();
+                console.log('Grouped playback started successfully.');
+                
+                // Stop playback after all groups are played
+                Tone.Transport.scheduleOnce(() => {
+                    stopPlaying();
+                }, `+${interval * groupColumns.length}`);
+                
+            } catch (error) {
+                console.error("Error during grouped series playback:", error);
+                stopPlaying();
+            }
+        }
+
+        /**
+         * Updates the visibility of play and stop buttons based on playback state.
+         */
+        function updatePlaybackButtons() {
+            const playButtons = document.querySelectorAll('.play-button');
+            const stopButtons = document.querySelectorAll('.stop-button');
+
+            if (isPlaying) {
+                playButtons.forEach(btn => btn.style.display = 'none');
+                stopButtons.forEach(btn => btn.style.display = 'inline-flex');
+            } else {
+                playButtons.forEach(btn => btn.style.display = 'inline-flex');
+                stopButtons.forEach(btn => btn.style.display = 'none');
+            }
+        }
+
+
+        // --- Save/Load Functions ---
+        
+        /**
+         * Loads saved series from local storage and renders the list.
+         */
+        function loadSavedSeriesFromLocalStorage() {
+            const savedSeriesJSON = localStorage.getItem('dodecaphonicSavedSeries');
+            savedSeries = savedSeriesJSON ? JSON.parse(savedSeriesJSON) : {};
+            renderSavedSeriesList();
+        }
+
+        /**
+         * Renders the list of saved series.
+         */
+        function renderSavedSeriesList() {
+            const list = document.getElementById('savedSeriesList');
+            if (!list) return;
+            list.innerHTML = '';
+            for (const name in savedSeries) {
+                const li = document.createElement('li');
+                li.className = 'saved-series-item';
+                
+                const span = document.createElement('span');
+                span.textContent = name;
+                span.dataset.seriesName = name;
+                
+                const deleteButton = document.createElement('button');
+                deleteButton.textContent = 'Eliminar';
+                deleteButton.dataset.seriesName = name;
+                deleteButton.addEventListener('click', (event) => {
+                    event.stopPropagation();
+                    delete savedSeries[event.target.dataset.seriesName];
+                    localStorage.setItem('dodecaphonicSavedSeries', JSON.stringify(savedSeries));
+                    renderSavedSeriesList();
+                });
+                
+                li.appendChild(span);
+                li.appendChild(deleteButton);
+                list.appendChild(li);
+            }
+        }
+        
+        // --- Event Handlers ---
+        
+        /**
+         * Handles the click event on a matrix cell or header.
+         * Renders the related series in the new section and adds a persistent highlight.
+         * @param {Event} event - The click event.
+         */
+        function handleMatrixClick(event) {
+            const cell = event.target;
+            let targetCell = cell;
+            if (cell.tagName === 'DIV') {
+                targetCell = cell.parentElement;
+            }
+
+            if (targetCell.tagName !== 'TD' && targetCell.tagName !== 'TH') {
+                return;
+            }
+            
+            // Remove previous selection highlight from all cells and headers
+            document.querySelectorAll('.matrix-cell-selected, .matrix-selected-row, .matrix-selected-col').forEach(el => {
+                el.classList.remove('matrix-cell-selected', 'matrix-selected-row', 'matrix-selected-col');
+            });
+
+            // Add the selection highlight to the clicked cell
+            targetCell.classList.add('matrix-cell-selected');
+
+            // Find and highlight the entire row and column
+            const rowIndex = targetCell.dataset.rowIndex;
+            const colIndex = targetCell.dataset.colIndex;
+            
+            if (rowIndex) {
+                document.querySelectorAll(`#matrixTable [data-row-index="${rowIndex}"]`).forEach(el => el.classList.add('matrix-selected-row'));
+            }
+            if (colIndex) {
+                document.querySelectorAll(`#matrixTable [data-col-index="${colIndex}"]`).forEach(el => el.classList.add('matrix-selected-col'));
+            }
+
+            stopPlaying();
+
+            const form = targetCell.dataset.form;
+
+            if (!basePrimeSeries) {
+                console.error('Base prime series is not available.');
+                return;
+            }
+
+            const prime0 = basePrimeSeries;
+            const inversion0 = generateInversion(prime0);
+
+            let pSeriesToDisplay = null;
+            let iSeriesToDisplay = null;
+            let rSeriesToDisplay = null;
+            let irSeriesToDisplay = null;
+            let pLabel = '';
+            let iLabel = '';
+            let rLabel = '';
+            let irLabel = '';
+            
+            if (rowIndex && colIndex) {
+                // Click on a note cell
+                const row = parseInt(rowIndex);
+                const col = parseInt(colIndex);
+                
+                // P series is the row
+                const pTransposition = (inversion0[row] - prime0[0] + 12) % 12;
+                pSeriesToDisplay = prime0.map(note => (note + pTransposition) % 12);
+                pLabel = `P${(prime0[0] + pTransposition) % 12}`;
+                
+                // I series is the column
+                const iTransposition = (prime0[col] - inversion0[0] + 12) % 12;
+                iSeriesToDisplay = inversion0.map(note => (note + iTransposition) % 12);
+                iLabel = `I${(inversion0[0] + iTransposition) % 12}`;
+                
+                // R is retrograde of P
+                rSeriesToDisplay = generateRetrograde(pSeriesToDisplay);
+                rLabel = `R${(rSeriesToDisplay[0] + inversion0[0] - prime0[0] + 12) % 12}`;
+                
+                // IR is retrograde of I
+                irSeriesToDisplay = generateRetrograde(iSeriesToDisplay);
+                irLabel = `IR${(irSeriesToDisplay[0] + inversion0[0] - prime0[0] + 12) % 12}`;
+
+            } else if (form) {
+                // Click on a header cell
+                const index = parseInt(rowIndex || colIndex);
+
+                if (form === 'prime') {
+                    const pTransposition = (inversion0[index] - prime0[0] + 12) % 12;
+                    pSeriesToDisplay = prime0.map(note => (note + pTransposition) % 12);
+                    iSeriesToDisplay = generateInversion(pSeriesToDisplay);
+                    rSeriesToDisplay = generateRetrograde(pSeriesToDisplay);
+                    irSeriesToDisplay = generateRetrograde(iSeriesToDisplay);
+                    pLabel = `P${index}`;
+                    iLabel = `I${(inversion0[index])}`;
+                    rLabel = `R${index}`;
+                    irLabel = `IR${(pSeriesToDisplay[11] - inversion0[0] + 12) % 12}`;
+
+                } else if (form === 'inversion') {
+                    const iTransposition = (prime0[index] - inversion0[0] + 12) % 12;
+                    iSeriesToDisplay = inversion0.map(note => (note + iTransposition) % 12);
+                    pSeriesToDisplay = generateInversion(iSeriesToDisplay);
+                    rSeriesToDisplay = generateRetrograde(pSeriesToDisplay);
+                    irSeriesToDisplay = generateRetrograde(iSeriesToDisplay);
+                    pLabel = `P${(prime0[0] + inversion0[0] - prime0[0] + 12) % 12}`;
+                    iLabel = `I${index}`;
+                    rLabel = `R${(pSeriesToDisplay[0] - inversion0[0] + 12) % 12}`;
+                    irLabel = `IR${index}`;
+                
+                } else if (form === 'retrograde') {
+                    const rTransposition = (prime0[11] - inversion0[0] + 12) % 12;
+                    const rSeries = generateRetrograde(prime0.map(note => (note + rTransposition) % 12));
+                    rSeriesToDisplay = rSeries;
+                    pSeriesToDisplay = generateRetrograde(rSeries);
+                    iSeriesToDisplay = generateInversion(pSeriesToDisplay);
+                    irSeriesToDisplay = generateRetrograde(iSeriesToDisplay);
+                    pLabel = `P${(rSeries[11] - inversion0[0] + 12) % 12}`;
+                    iLabel = `I${(inversion0[index] + prime0[0] - inversion0[0] + 12) % 12}`;
+                    rLabel = `R${index}`;
+                    irLabel = `IR${(rSeries[0] - inversion0[0] + 12) % 12}`;
+
+                } else if (form === 'inversionRetrograde') {
+                    const irTransposition = (inversion0[11] - prime0[0] + 12) % 12;
+                    const irSeries = generateRetrograde(inversion0.map(note => (note + irTransposition) % 12));
+                    irSeriesToDisplay = irSeries;
+                    iSeriesToDisplay = generateRetrograde(irSeries);
+                    pSeriesToDisplay = generateInversion(iSeriesToDisplay);
+                    rSeriesToDisplay = generateRetrograde(pSeriesToDisplay);
+                    pLabel = `P${(irSeries[11] - inversion0[0] + 12) % 12}`;
+                    iLabel = `I${(irSeries[0] - inversion0[0] + 12) % 12}`;
+                    rLabel = `R${(irSeries[0] - inversion0[0] + 12) % 12}`;
+                    irLabel = `IR${index}`;
+                }
+            } else {
+                return;
+            }
+
+            if (!pSeriesToDisplay) {
+                return;
+            }
+
+            const displaySection = document.getElementById('matrix-series-display');
+            if (displaySection) {
+                displaySection.classList.remove('hidden');
+            }
+
+            const matrixPrimeHeader = document.getElementById('matrixPrimeHeader');
+            if (matrixPrimeHeader) { matrixPrimeHeader.textContent = pLabel; }
+            renderSeries('matrixPrimeSeries', pSeriesToDisplay);
+
+            const matrixInversionHeader = document.getElementById('matrixInversionHeader');
+            if (matrixInversionHeader) { matrixInversionHeader.textContent = iLabel; }
+            renderSeries('matrixInversionSeries', iSeriesToDisplay);
+            
+            const matrixRetrogradeHeader = document.getElementById('matrixRetrogradeHeader');
+            if (matrixRetrogradeHeader) { matrixRetrogradeHeader.textContent = rLabel; }
+            renderSeries('matrixRetrogradeSeries', rSeriesToDisplay);
+            
+            const matrixInversionRetrogradeHeader = document.getElementById('matrixInversionRetrogradeHeader');
+            if (matrixInversionRetrogradeHeader) { matrixInversionRetrogradeHeader.textContent = irLabel; }
+            renderSeries('matrixInversionRetrogradeSeries', irSeriesToDisplay);
+        }
+        
+        /**
+         * Highlights the row and column of the hovered matrix cell.
+         * @param {Event} event - The mouseover event.
+         */
+        function handleMatrixMouseOver(event) {
+            const cell = event.target;
+            // Ensure the event is on the cell or header
+            let targetCell = cell;
+            if (cell.tagName === 'DIV') {
+                targetCell = cell.parentElement;
+            }
+
+            if (targetCell.tagName !== 'TD' && targetCell.tagName !== 'TH') return;
+            
+            const rowIndex = targetCell.dataset.rowIndex;
+            const colIndex = targetCell.dataset.colIndex;
+            
+            if (rowIndex) {
+                document.querySelectorAll(`#matrixTable [data-row-index="${rowIndex}"]`).forEach(el => el.classList.add('matrix-hover-highlight-row'));
+            }
+            if (colIndex) {
+                document.querySelectorAll(`#matrixTable [data-col-index="${colIndex}"]`).forEach(el => el.classList.add('matrix-hover-highlight-col'));
+            }
+        }
+
+        /**
+         * Removes the row and column highlights when the mouse leaves a matrix cell.
+         */
+        function handleMatrixMouseOut() {
+            document.querySelectorAll('.matrix-hover-highlight-row').forEach(el => el.classList.remove('matrix-hover-highlight-row'));
+            document.querySelectorAll('.matrix-hover-highlight-col').forEach(el => el.classList.remove('matrix-hover-highlight-col'));
+        }
+
+        // --- Main execution block ---
+        document.addEventListener('DOMContentLoaded', () => {
+            // Event listener for playback buttons using event delegation on the body
+            document.body.addEventListener('click', (event) => {
+                const playButton = event.target.closest('.play-button');
+                const stopButton = event.target.closest('.stop-button');
+                
+                if (playButton) {
+                    // Stop any ongoing playback before starting a new one
+                    stopPlaying();
+
+                    const seriesType = playButton.dataset.seriesType;
+                    const seriesId = playButton.dataset.seriesId;
+
+                    // Lógica para botones de reproducción de segmentos
+                    if (playButton.classList.contains('play-group-button')) {
+                        const groupSize = parseInt(playButton.dataset.groupSize);
+                        const series = currentSeriesData[seriesType];
+                        const containerId = playButton.dataset.seriesId;
+                        if (series && containerId) {
+                            playGroupedSeries(series, groupSize, containerId);
+                        } else {
+                             console.error('No se puede reproducir la serie segmentada, datos no disponibles.');
+                        }
+                    } 
+                    // Lógica para botones de reproducción de series completas (principales y de la matriz)
+                    else if (seriesId) {
+                        const seriesElements = document.getElementById(seriesId);
+                        if (seriesElements) {
+                            const notes = Array.from(seriesElements.children).map(li => useNoteNames ? noteNames.indexOf(li.textContent) : parseInt(li.textContent));
+                            playSeries(notes, seriesId);
+                        } else {
+                             console.error(`No se puede encontrar el elemento de la serie con el ID: ${seriesId}`);
+                        }
+                    } else {
+                        console.error('No se puede reproducir, el tipo de botón o el ID de la serie no son válidos.');
+                    }
+                } else if (stopButton) {
+                    stopPlaying();
+                }
+            });
+
+            // Event listener for main action buttons
+            document.getElementById('generateRandomButton')?.addEventListener('click', () => {
+                stopPlaying();
+                currentTransposeIndex = 0;
+                renderTransposeButtons();
+                generateAndRenderSeries(generateRandomSeries());
+            });
+
+            document.getElementById('saveButton')?.addEventListener('click', () => {
+                const appCard = document.getElementById('appCard');
+                if (appCard) {
+                    html2canvas(appCard).then(canvas => {
+                        const link = document.createElement('a');
+                        link.download = 'dodecaphonic-matrix.png';
+                        link.href = canvas.toDataURL('image/png');
+                        link.click();
+                    });
+                }
+            });
+
+            document.getElementById('toggleNotationButton')?.addEventListener('click', () => {
+                stopPlaying();
+                useNoteNames = !useNoteNames;
+                const notationHelpText = document.getElementById('notationHelpText');
+                if (notationHelpText) {
+                    notationHelpText.style.display = useNoteNames ? 'block' : 'none';
+                }
+                if (basePrimeSeries) {
+                    generateAndRenderSeries(basePrimeSeries, currentTransposeIndex);
+                }
+                
+                const button = document.getElementById('toggleNotationButton');
+                if (button) {
+                    if (useNoteNames) {
+                        button.textContent = 'Cambiar a Notación Numérica';
+                    } else {
+                        button.textContent = 'Cambiar a Notación de Notas';
+                    }
+                }
+            });
+            
+            // Event listeners for custom input series
+            document.getElementById('generateCustomButton')?.addEventListener('click', () => {
+                stopPlaying();
+                const inputs = document.querySelectorAll('.custom-series-input');
+                const customSeries = [];
+                let isValid = true;
+                const seenNotes = new Set();
+                inputs.forEach(input => {
+                    const value = parseInt(input.value);
+                    if (isNaN(value) || value < 0 || value > 11 || seenNotes.has(value)) {
+                        isValid = false;
+                    }
+                    seenNotes.add(value);
+                    customSeries.push(value);
+                });
+
+                const errorText = document.getElementById('customInputError');
+                if (isValid) {
+                    if (errorText) errorText.classList.add('hidden');
+                    currentTransposeIndex = 0;
+                    renderTransposeButtons();
+                    generateAndRenderSeries(customSeries);
+                } else {
+                    if (errorText) errorText.classList.remove('hidden');
+                }
+            });
+
+            document.getElementById('clearCustomButton')?.addEventListener('click', () => {
+                document.querySelectorAll('.custom-series-input').forEach(input => input.value = '');
+                const errorText = document.getElementById('customInputError');
+                if (errorText) errorText.classList.add('hidden');
+            });
+            
+            // Event listeners for playback controls
+            document.getElementById('volumeSlider')?.addEventListener('input', (event) => {
+                pianoSynth.volume.value = event.target.value;
+            });
+
+            document.getElementById('tempoSlider')?.addEventListener('input', (event) => {
+                const tempo = event.target.value;
+                Tone.Transport.bpm.value = tempo;
+                const tempoValue = document.getElementById('tempoValue');
+                if (tempoValue) tempoValue.textContent = `${tempo} bpm`;
+            });
+
+            // Event listeners for grouping
+            document.getElementById('groupSelect')?.addEventListener('change', (event) => {
+                const groupSize = parseInt(event.target.value);
+                renderGroupedSeries(groupSize);
+            });
+            
+            // Event listeners for saving/loading series
+            document.getElementById('saveSeriesButton')?.addEventListener('click', () => {
+                if (basePrimeSeries) {
+                    const seriesNameInput = document.getElementById('seriesNameInput');
+                    const seriesName = seriesNameInput?.value.trim();
+                    if (seriesName) {
+                        savedSeries[seriesName] = basePrimeSeries;
+                        localStorage.setItem('dodecaphonicSavedSeries', JSON.stringify(savedSeries));
+                        renderSavedSeriesList();
+                        seriesNameInput.value = '';
+                    }
+                }
+            });
+            
+            document.getElementById('savedSeriesList')?.addEventListener('click', (event) => {
+                const seriesName = event.target.dataset.seriesName;
+                if (seriesName && savedSeries[seriesName]) {
+                    stopPlaying();
+                    currentTransposeIndex = 0;
+                    renderTransposeButtons();
+                    generateAndRenderSeries(savedSeries[seriesName]);
+                }
+            });
+
+            // Event listener for transposition buttons
+            document.getElementById('transposeButtonsContainer')?.addEventListener('click', (event) => {
+                const button = event.target.closest('.transpose-button');
+                if (button && basePrimeSeries) {
+                    stopPlaying();
+                    currentTransposeIndex = parseInt(button.dataset.transposeIndex);
+                    document.querySelectorAll('.transpose-button').forEach(btn => btn.classList.remove('active'));
+                    button.classList.add('active');
+                    generateAndRenderSeries(basePrimeSeries, currentTransposeIndex);
+                }
+            });
+
+            // Listener for matrix clicks
+            document.getElementById('matrixTable')?.addEventListener('click', handleMatrixClick);
+            document.getElementById('matrixTable')?.addEventListener('mouseover', handleMatrixMouseOver);
+            document.getElementById('matrixTable')?.addEventListener('mouseout', handleMatrixMouseOut);
+
+            // Initial setup and rendering
+            loadSavedSeriesFromLocalStorage();
+            renderCustomInputFields();
+            renderTransposeButtons();
+            
+            // Generate the first random series on load
+            generateAndRenderSeries(generateRandomSeries());
+        });
+    </script>
+</body>
+</html>
